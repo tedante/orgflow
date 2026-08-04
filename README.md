@@ -37,11 +37,11 @@ cp orgflow.conf.example orgflow.conf
 
 | Variable | Used by | Purpose |
 |---|---|---|
-| `USERS` | both | Student GitHub usernames, space separated |
+| `USERS` | both | Student GitHub usernames — paste as-is, one per line, **no quotes needed** |
 | `ORG` | `invite.sh` | Target GitHub Organization (`create-repo.sh` derives the org from `TEMPLATES`) |
 | `TEAM_NAME` | both | Cohort identifier (e.g. `hck-99`). Prefixes repo names in `create-repo.sh` |
-| `REVIEWERS` | `create-repo.sh` | Instructor/TA usernames |
-| `TEMPLATES` | `create-repo.sh` | `organization/repository\|YYYY-MM-DD HH:MM` — template + deadline (WIB). Deadline optional; without it, milestone/issue steps are skipped |
+| `REVIEWERS` | `create-repo.sh` | Instructor/TA usernames — plain space/newline-separated list, no quotes |
+| `TEMPLATES` | `create-repo.sh` | `organization/repository\|YYYY-MM-DD HH:MM` — template + deadline (WIB). Deadline optional; without it, milestone/issue steps are skipped. Kept as array: each entry contains a space (`\|`) |
 
 > Config files are git-ignored on purpose. Cohort data stays local — scripts stay generic.
 

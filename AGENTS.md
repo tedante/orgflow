@@ -25,7 +25,8 @@ GitHub Organization automation toolkit for Hacktiv8 lectures. Two standalone bas
 
 - Single shared config: `orgflow.conf` at repo root, `source`d by both scripts. **Git-ignored** — cohort data is local, never committed.
 - `CONFIG_FILE` env var overrides the config path (used for testing/previews).
-- `USERS=()` students (both scripts), `ORG` target org (invite.sh only — create-repo.sh derives org from `TEMPLATES[0]`), `TEAM_NAME` cohort id (both; prefixes repo names), `REVIEWERS=()` instructors/TA (create-repo.sh only), `TEMPLATES=()` with `org/repo|YYYY-MM-DD HH:MM` deadline format (create-repo.sh only).
+- `USERS` and `REVIEWERS` are **plain strings** (space/newline-separated, no quotes — paste as-is). Every script converts them to arrays right after `source` (`USERS_ARR=($USERS); USERS=("${USERS_ARR[@]}")`). Safe because GitHub username charset is `[a-zA-Z0-9-]` — no glob characters.
+- `ORG` target org (invite.sh only — create-repo.sh derives org from `TEMPLATES[0]`), `TEAM_NAME` cohort id (both; prefixes repo names), `TEMPLATES=()` with `org/repo|YYYY-MM-DD HH:MM` deadline format (create-repo.sh only). `TEMPLATES` must stay an array — each entry contains a space (`|` separator).
 - `clone-repos.sh` does not use `REVIEWERS` — it derives repo names from `TEAM_NAME` + `TEMPLATES` + `USERS`. Only requires existing org access — no `admin:org` scope check, matching its read-only contract.
 
 ## CLI Contract

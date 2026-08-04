@@ -25,6 +25,11 @@ if [ ! -f "$CONFIG_FILE" ]; then
 fi
 source "$CONFIG_FILE"
 
+# Convert plain-string lists to arrays (conf format: no quotes, space/newline-separated)
+# Safe: GitHub username charset is [a-zA-Z0-9-], no glob characters possible
+USERS_ARR=($USERS)
+USERS=("${USERS_ARR[@]}")
+
 # ------------------------------------------
 # Pre-flight validation
 # ------------------------------------------
