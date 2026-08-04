@@ -10,51 +10,106 @@ Before running either script, the instructor's local machine must have the GitHu
    Open your terminal and install the CLI tool:
    ```bash
    brew install gh
-   
+   ```
+
 2. **Authenticate with GitHub**:
    Link your GitHub account by running:
    ```bash
    gh auth login
-      *Follow the interactive terminal prompts to log in via your browser.*
+   ```
+   *Follow the interactive terminal prompts to log in via your browser.*
 
 3. **Elevate Organization Permissions**:
    Explicitly grant the tool permission to manage organization resources:
    ```bash
    gh auth refresh -h github.com -s admin:org
-   
+   ```
+
+---
+
+## ⚙️ Configuration
+
+Both scripts share one config file. It is git-ignored — copy the example and edit:
+
+```bash
+cp orgflow.conf.example orgflow.conf
+```
+
+| Variable | Used by | Purpose |
+|---|---|---|
+| `USERS` | both | Student GitHub usernames, space separated |
+| `ORG` | `invite.sh` | Target GitHub Organization (`create-repo.sh` derives the org from `TEMPLATES`) |
+| `TEAM_NAME` | both | Cohort identifier (e.g. `hck-99`). Prefixes repo names in `create-repo.sh` |
+| `REVIEWERS` | `create-repo.sh` | Instructor/TA usernames |
+| `TEMPLATES` | `create-repo.sh` | `organization/repository\|YYYY-MM-DD HH:MM` — template + deadline (WIB). Deadline optional; without it, milestone/issue steps are skipped |
+
+> Config files are git-ignored on purpose. Cohort data stays local — scripts stay generic.
+
 ---
 
 ## 👤 Step 1: Onboarding Students (`invite.sh`)
 
-This script ensures the target cohort team is created in the organization and invites new students to join the organization as direct members assigned to that team.
+Ensures the cohort team exists, then invites students to the org as direct members linked to that team.
 
-### 1. Configuration
-Open the `invite.sh` file in your preferred text editor and customize the parameters at the top of the file:
-* **`USERS`**: List the exact GitHub usernames of the new students, separated by spaces.
-* **`ORG`**: Specify your target GitHub Organization name.
-* **`TEAM_NAME`**: Set your specific cohort tracker ID (e.g., `hck-100`).
+### 1. Dry-run (recommended)
+```bash
+bash invite.sh --dry-run
+```
+Prints the invitation plan (team, invitees) **without calling the GitHub API**.
 
-### 2. Usage
-Open your computer terminal, navigate to the folder containing your script, and run the file by typing the following command in your terminal:
+### 2. Execute
 ```bash
 bash invite.sh
+```
+Safe to re-run — existing memberships are detected and not re-invited.
 
 ---
 
 ## 🚀 Step 2: Bulk Assignment Provisioning (`create-repo.sh`)
 
-This script creates private individual student repositories from a template repository, sets up isolated write access for each student, assigns reviewers, schedules milestones with deadlines, and initializes dedicated Feedback Pull Requests.
+Creates private per-student repos from a template, grants isolated write access to the student only, assigns reviewers, schedules a milestone with deadline, and opens a feedback PR.
 
 ### 1. Configuration
-Open the `create-repo.sh` file in your text editor and customize the parameters at the top of the file:
-* **`USERS`**: Add the GitHub usernames of the active student cohort.
-* **`REVIEWERS`**: Add the usernames of the instructors or TAs grading the work.
-* **`TEAM_NAME`**: Set the cohort identifier (e.g., `FSJS-STUDENTS`). This will prefix each student's repository name to keep the organization view searchable and clean.
-* **`TEMPLATES`**: Update the template source path and its target assignment submission deadline.
+Edit `TEMPLATES` in `orgflow.conf`. Example with deadline:
 
-### 2. Usage
-Open your computer terminal, navigate to the folder containing your script, and run the file by typing the following command in your terminal:
+```
+TEMPLATES=(
+    "H8-P1-S2/fsjs-p1-v2-c3|2026-08-31 23:59"
+)
+```
+
+### 2. Dry-run (recommended)
+```bash
+bash create-repo.sh --dry-run
+```
+Prints the full provisioning plan: team, member sync, every repo name, per-repo actions. **No API calls.**
+
+### 3. Execute
 ```bash
 bash create-repo.sh
-`
-I have saved this to the workspace as `instructions.md` and provided the raw syntax block above. This will keep all your formatting perfectly preserved when you copy it! Let me know if you need any other additions.
+```
+Safe to re-run after partial failure — existing repos/teams/invitations are skipped or treated as notices.
+
+---
+
+## 📥 Bonus: Cloning All Cohort Repos (`clone-repos.sh`)
+
+For each template in `TEMPLATES`, clones every student repo (`TEAM_NAME-<template>-<user>`) into `./<template>/<repo>/` — only for users listed in `USERS`, only if the repo actually exists. Handy for reviewing/grading all assignments at once. Needs only read access to the repos (reviewer/owner) — no `admin:org`.
+
+```bash
+# from a fresh grading directory
+cd ~/grading
+bash clone-repos.sh --dry-run   # verify plan: folders + repo names
+bash clone-repos.sh             # clone all repos into ./fsjs-p1-v2-c3/
+```
+
+Result:
+```
+grading/
+└── fsjs-p1-v2-c3/
+    ├── hck-99-fsjs-p1-v2-c3-michaelarteta-design/
+    ├── hck-99-fsjs-p1-v2-c3-fadil0711/
+    └── ...
+```
+
+Re-running skips already-cloned folders. Repos for users not provisioned yet are reported and skipped.
