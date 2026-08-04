@@ -3,37 +3,80 @@
 # ==========================================
 # GitHub Organization Invitation Script
 # ==========================================
-# Please configure the variables below before running the script.
+# Usage: bash invite.sh [--dry-run]
+# Config: edit orgflow.conf (see orgflow.conf.example)
+#   --dry-run  print the invitation plan without calling the GitHub API
 
-# Array of GitHub usernames to invite
-# Separate with spaces
-USERS=(
-    "michaelarteta-design"
-    "fadil0711"
-    "fadildi60"
-    "nickzadpratama"
-    "afifchandrabayuaji"
-    "Okabe-15"
-    "i-adharul"
-    "ariefrizkyrc"
-)
+DRY_RUN=0
+[ "$1" = "--dry-run" ] && DRY_RUN=1
 
-# Organization name
-ORG="H8-P0-S1"
+# Load config
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CONFIG_FILE="${CONFIG_FILE:-$SCRIPT_DIR/orgflow.conf}"
+if [ ! -f "$CONFIG_FILE" ]; then
+    echo "Error: Config file '$CONFIG_FILE' not found."
+    echo "Copy orgflow.conf.example to orgflow.conf and edit it before running."
+    exit 1
+fi
+source "$CONFIG_FILE"
 
-# Team name to add invited users to (required)
-TEAM_NAME="hck-100"
+# Convert plain-string lists to arrays (conf format: no quotes, space/newline-separated)
+# Safe: GitHub username charset is [a-zA-Z0-9-], no glob characters possible
+USERS_ARR=($USERS)
+USERS=("${USERS_ARR[@]}")
 
-# ==========================================
-
-# Validate required configuration
+# ------------------------------------------
+# Pre-flight validation
+# ------------------------------------------
 if [ -z "$ORG" ]; then
-    echo "Error: ORG is not set."
+    echo "Error: ORG is not set in $CONFIG_FILE."
     exit 1
 fi
 
 if [ -z "$TEAM_NAME" ]; then
-    echo "Error: TEAM_NAME is not set."
+    echo "Error: TEAM_NAME is not set in $CONFIG_FILE."
+    exit 1
+fi
+
+if [ "${#USERS[@]}" -eq 0 ]; then
+    echo "Error: USERS is empty in $CONFIG_FILE."
+    exit 1
+fi
+
+# ------------------------------------------
+# Dry-run: print plan, execute nothing
+# ------------------------------------------
+if [ "$DRY_RUN" -eq 1 ]; then
+    echo "=========================================="
+    echo "DRY-RUN: Invitation plan for $ORG"
+    echo "=========================================="
+    echo "Team:     $TEAM_NAME (created as 'secret' if missing)"
+    echo "Invitees: ${#USERS[@]} users as direct_member, linked to team:"
+    for USER in "${USERS[@]}"; do
+        echo "  - $USER"
+    done
+    echo "------------------------------------------"
+    echo "No GitHub API calls will be made."
+    echo "Re-run without --dry-run to execute."
+    exit 0
+fi
+
+# ------------------------------------------
+# GitHub CLI auth check (real mode only)
+# ------------------------------------------
+if ! command -v gh >/dev/null 2>&1; then
+    echo "Error: GitHub CLI ('gh') not found. Install: https://cli.github.com"
+    exit 1
+fi
+
+if ! gh auth status -h github.com >/dev/null 2>&1; then
+    echo "Error: Not authenticated with GitHub CLI. Run 'gh auth login' first."
+    exit 1
+fi
+
+if ! gh auth status -h github.com 2>&1 | grep -q "admin:org"; then
+    echo "Error: Missing 'admin:org' scope."
+    echo "Run 'gh auth refresh -h github.com -s admin:org'."
     exit 1
 fi
 
