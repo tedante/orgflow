@@ -1,5 +1,5 @@
 # ==========================================
-# Orgflow config — used by invite.sh AND create-repo.sh
+# Orgflow config — used by invite.sh, create-repo.sh, clone-repos.sh
 # Copy this file to orgflow.conf and edit.
 # orgflow.conf is git-ignored.
 # ==========================================
