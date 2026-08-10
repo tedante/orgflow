@@ -27,3 +27,7 @@ REVIEWERS="instructor-username"
 TEMPLATES=(
     "YOUR-ORG/assignment-template|2026-08-31 23:59"
 )
+
+# Clone base directory — clone-repos.sh only
+# Repos land in $CLONE_DIR/<template>/<repo>/. Optional, defaults to current dir.
+CLONE_DIR="cloneResult"

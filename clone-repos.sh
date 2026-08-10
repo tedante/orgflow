@@ -6,7 +6,8 @@
 # Usage: bash clone-repos.sh [--dry-run]
 # Config: edit orgflow.conf (see orgflow.conf.example)
 # For each template in TEMPLATES, clones every student repo
-# (TEAM_NAME-<template>-<user>) into ./<template>/<repo>/.
+# (TEAM_NAME-<template>-<user>) into $CLONE_DIR/<template>/<repo>/.
+# CLONE_DIR (optional, default: current dir) sets the base folder.
 # Only clones repos for users listed in USERS, and only if the
 # repo actually exists in the org.
 # Needs read access to the repos (reviewer/owner) — no admin:org.
@@ -29,6 +30,9 @@ source "$CONFIG_FILE"
 # Safe: GitHub username charset is [a-zA-Z0-9-], no glob characters possible
 USERS_ARR=($USERS)
 USERS=("${USERS_ARR[@]}")
+
+# Clone base directory (clone-repos.sh only) — repos land in $CLONE_DIR/<template>/
+CLONE_DIR="${CLONE_DIR:-.}"
 
 # ------------------------------------------
 # Pre-flight validation
@@ -73,7 +77,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
         esac
         REPO_BASENAME=$(echo "$TEMPLATE_REPO" | cut -d'/' -f2)
         CLEAN_REPO_NAME=$(echo "$REPO_BASENAME" | sed -E 's/(^|[-_])template([-_]|$)/\1/g; s/^[-_]//; s/[-_]$//')
-        echo "Template: $TEMPLATE_REPO -> ./$CLEAN_REPO_NAME/"
+        echo "Template: $TEMPLATE_REPO -> $CLONE_DIR/$CLEAN_REPO_NAME/"
         for USER in "${USERS[@]}"; do
             echo "  - ${TEAM_NAME}-${CLEAN_REPO_NAME}-${USER}/"
         done
@@ -110,7 +114,7 @@ if [ -z "$EXISTING" ]; then
 fi
 
 # ------------------------------------------
-# Clone per template into ./<template>/<repo>/
+# Clone per template into $CLONE_DIR/<template>/<repo>/
 # (Idempotent: already-cloned folders are skipped)
 # ------------------------------------------
 for ITEM in "${TEMPLATES[@]}"; do
@@ -126,8 +130,8 @@ for ITEM in "${TEMPLATES[@]}"; do
     CLEAN_REPO_NAME=$(echo "$REPO_BASENAME" | sed -E 's/(^|[-_])template([-_]|$)/\1/g; s/^[-_]//; s/[-_]$//')
 
     echo "------------------------------------------"
-    echo "Cloning '$TEMPLATE_REPO' assignments into ./$CLEAN_REPO_NAME/"
-    mkdir -p "$CLEAN_REPO_NAME"
+    echo "Cloning '$TEMPLATE_REPO' assignments into $CLONE_DIR/$CLEAN_REPO_NAME/"
+    mkdir -p "$CLONE_DIR/$CLEAN_REPO_NAME"
 
     for USER in "${USERS[@]}"; do
         REPO_NAME="${TEAM_NAME}-${CLEAN_REPO_NAME}-${USER}"
@@ -135,14 +139,14 @@ for ITEM in "${TEMPLATES[@]}"; do
             echo "  - $REPO_NAME not found in org, skipping"
             continue
         fi
-        if [ -d "$CLEAN_REPO_NAME/$REPO_NAME" ]; then
+        if [ -d "$CLONE_DIR/$CLEAN_REPO_NAME/$REPO_NAME" ]; then
             echo "  - $REPO_NAME already exists, skipping"
             continue
         fi
         echo "  - cloning $ORG/$REPO_NAME"
-        gh repo clone "$ORG/$REPO_NAME" "$CLEAN_REPO_NAME/$REPO_NAME" -- --quiet \
+        gh repo clone "$ORG/$REPO_NAME" "$CLONE_DIR/$CLEAN_REPO_NAME/$REPO_NAME" -- --quiet \
             || echo "  Error cloning $ORG/$REPO_NAME (check access or network)"
     done
 done
 
-echo "Done. Cloned repos are in $(pwd)"
+echo "Done. Cloned repos are in $CLONE_DIR"
