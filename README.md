@@ -2,6 +2,19 @@
 
 This guide covers the prerequisites and step-by-step instructions for running the automation scripts to onboard students and provision private repository environments.
 
+## 🖥️ TUI (Recommended)
+
+All three scripts can be driven from a single interactive menu (Node.js + Ink):
+
+```bash
+npm install   # once
+npm start
+```
+
+The TUI shows config + `gh` auth status, runs each script in dry-run or real mode, streams script output inline, and asks for confirmation before real GitHub mutations. With multiple templates in `TEMPLATES`, Create/Clone first show a picker — toggle which template(s) to process (space), then proceed.
+
+---
+
 ## 📋 Prerequisites (Do this First)
 
 Before running either script, the instructor's local machine must have the GitHub CLI installed and authenticated with administrative organization access.

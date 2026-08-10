@@ -31,6 +31,12 @@ source "$CONFIG_FILE"
 USERS_ARR=($USERS)
 USERS=("${USERS_ARR[@]}")
 
+# Template filter (set by TUI): semicolon-separated entries replace TEMPLATES
+if [ -n "$ORGFLOW_TEMPLATES" ]; then
+    IFS=';' read -ra TEMPLATES_OVERRIDE <<< "$ORGFLOW_TEMPLATES"
+    TEMPLATES=("${TEMPLATES_OVERRIDE[@]}")
+fi
+
 # Clone base directory (clone-repos.sh only) — repos land in $CLONE_DIR/<template>/
 CLONE_DIR="${CLONE_DIR:-.}"
 
