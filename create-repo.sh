@@ -27,6 +27,12 @@ USERS=("${USERS_ARR[@]}")
 REVIEWERS_ARR=($REVIEWERS)
 REVIEWERS=("${REVIEWERS_ARR[@]}")
 
+# Template filter (set by TUI): semicolon-separated entries replace TEMPLATES
+if [ -n "$ORGFLOW_TEMPLATES" ]; then
+    IFS=';' read -ra TEMPLATES_OVERRIDE <<< "$ORGFLOW_TEMPLATES"
+    TEMPLATES=("${TEMPLATES_OVERRIDE[@]}")
+fi
+
 # ------------------------------------------
 # Pre-flight validation
 # ------------------------------------------

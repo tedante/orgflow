@@ -2,6 +2,19 @@
 
 This guide covers the prerequisites and step-by-step instructions for running the automation scripts to onboard students and provision private repository environments.
 
+## 🖥️ TUI (Recommended)
+
+All three scripts can be driven from a single interactive menu (Node.js + Ink):
+
+```bash
+npm install   # once
+npm start
+```
+
+The TUI shows config + `gh` auth status, runs each script in dry-run or real mode, streams script output inline, and asks for confirmation before real GitHub mutations. With multiple templates in `TEMPLATES`, Create/Clone first show a picker — toggle which template(s) to process (space), then proceed.
+
+---
+
 ## 📋 Prerequisites (Do this First)
 
 Before running either script, the instructor's local machine must have the GitHub CLI installed and authenticated with administrative organization access.
@@ -42,6 +55,7 @@ cp orgflow.conf.example orgflow.conf
 | `TEAM_NAME` | both | Cohort identifier (e.g. `hck-99`). Prefixes repo names in `create-repo.sh` |
 | `REVIEWERS` | `create-repo.sh` | Instructor/TA usernames — plain space/newline-separated list, no quotes |
 | `TEMPLATES` | `create-repo.sh` | `organization/repository\|YYYY-MM-DD HH:MM` — template + deadline (WIB). Deadline optional; without it, milestone/issue steps are skipped. Kept as array: each entry contains a space (`\|`) |
+| `CLONE_DIR` | `clone-repos.sh` | Base folder for cloned repos (e.g. `cloneResult`). Optional — defaults to current dir. Repos land in `$CLONE_DIR/<template>/<repo>/` |
 
 > Config files are git-ignored on purpose. Cohort data stays local — scripts stay generic.
 
@@ -94,22 +108,25 @@ Safe to re-run after partial failure — existing repos/teams/invitations are sk
 
 ## 📥 Bonus: Cloning All Cohort Repos (`clone-repos.sh`)
 
-For each template in `TEMPLATES`, clones every student repo (`TEAM_NAME-<template>-<user>`) into `./<template>/<repo>/` — only for users listed in `USERS`, only if the repo actually exists. Handy for reviewing/grading all assignments at once. Needs only read access to the repos (reviewer/owner) — no `admin:org`.
+For each template in `TEMPLATES`, clones every student repo (`TEAM_NAME-<template>-<user>`) into `$CLONE_DIR/<template>/<repo>/` — only for users listed in `USERS`, only if the repo actually exists. Handy for reviewing/grading all assignments at once. Needs only read access to the repos (reviewer/owner) — no `admin:org`.
+
+Set `CLONE_DIR` in `orgflow.conf` to land clones in a dedicated folder (e.g. `cloneResult`). Omit it to clone into the current directory.
 
 ```bash
 # from a fresh grading directory
 cd ~/grading
 bash clone-repos.sh --dry-run   # verify plan: folders + repo names
-bash clone-repos.sh             # clone all repos into ./fsjs-p1-v2-c3/
+bash clone-repos.sh             # clone all repos into ./cloneResult/fsjs-p1-v2-c3/
 ```
 
-Result:
+Result (with `CLONE_DIR="cloneResult"`):
 ```
 grading/
-└── fsjs-p1-v2-c3/
-    ├── hck-99-fsjs-p1-v2-c3-michaelarteta-design/
-    ├── hck-99-fsjs-p1-v2-c3-fadil0711/
-    └── ...
+└── cloneResult/
+    └── fsjs-p1-v2-c3/
+        ├── hck-99-fsjs-p1-v2-c3-michaelarteta-design/
+        ├── hck-99-fsjs-p1-v2-c3-fadil0711/
+        └── ...
 ```
 
 Re-running skips already-cloned folders. Repos for users not provisioned yet are reported and skipped.
