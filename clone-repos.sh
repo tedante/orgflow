@@ -81,8 +81,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
                 TEMPLATE_REPO="$ITEM"
                 ;;
         esac
-        REPO_BASENAME=$(echo "$TEMPLATE_REPO" | cut -d'/' -f2)
-        CLEAN_REPO_NAME=$(echo "$REPO_BASENAME" | sed -E 's/(^|[-_])template([-_]|$)/\1/g; s/^[-_]//; s/[-_]$//')
+        CLEAN_REPO_NAME=$(echo "$TEMPLATE_REPO" | sed -E 's/(^|[-_])template([-_]|$)/\1/g; s/^[-_]//; s/[-_]$//')
         echo "Template: $TEMPLATE_REPO -> $CLONE_DIR/$CLEAN_REPO_NAME/"
         for USER in "${USERS[@]}"; do
             echo "  - ${TEAM_NAME}-${CLEAN_REPO_NAME}-${USER}/"
@@ -132,8 +131,7 @@ for ITEM in "${TEMPLATES[@]}"; do
             TEMPLATE_REPO="$ITEM"
             ;;
     esac
-    REPO_BASENAME=$(echo "$TEMPLATE_REPO" | cut -d'/' -f2)
-    CLEAN_REPO_NAME=$(echo "$REPO_BASENAME" | sed -E 's/(^|[-_])template([-_]|$)/\1/g; s/^[-_]//; s/[-_]$//')
+    CLEAN_REPO_NAME=$(echo "$TEMPLATE_REPO" | sed -E 's/(^|[-_])template([-_]|$)/\1/g; s/^[-_]//; s/[-_]$//')
 
     echo "------------------------------------------"
     echo "Cloning '$TEMPLATE_REPO' assignments into $CLONE_DIR/$CLEAN_REPO_NAME/"

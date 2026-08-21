@@ -51,10 +51,10 @@ cp orgflow.conf.example orgflow.conf
 | Variable | Used by | Purpose |
 |---|---|---|
 | `USERS` | both | Student GitHub usernames — paste as-is, one per line, **no quotes needed** |
-| `ORG` | `invite.sh` | Target GitHub Organization (`create-repo.sh` derives the org from `TEMPLATES`) |
+| `ORG` | all | Target GitHub Organization (used by `invite.sh`, `create-repo.sh`, `clone-repos.sh`) |
 | `TEAM_NAME` | both | Cohort identifier (e.g. `hck-99`). Prefixes repo names in `create-repo.sh` |
-| `REVIEWERS` | `create-repo.sh` | Instructor/TA usernames — plain space/newline-separated list, no quotes |
-| `TEMPLATES` | `create-repo.sh` | `organization/repository\|YYYY-MM-DD HH:MM` — template + deadline (WIB). Deadline optional; without it, milestone/issue steps are skipped. Kept as array: each entry contains a space (`\|`) |
+| `REVIEWERS` | `create-repo.sh` | Instructor/TA usernames — plain space/newline-separated list, no quotes. **Optional** — leave empty to skip assigning reviewers |
+| `TEMPLATES` | `create-repo.sh` | `repository\|YYYY-MM-DD HH:MM` — template repo name + deadline (WIB). The org is taken from `ORG`. Deadline optional; without it, milestone/issue steps are skipped. Kept as array: each entry contains a space (`\|`) |
 | `CLONE_DIR` | `clone-repos.sh` | Base folder for cloned repos (e.g. `cloneResult`). Optional — defaults to current dir. Repos land in `$CLONE_DIR/<template>/<repo>/` |
 
 > Config files are git-ignored on purpose. Cohort data stays local — scripts stay generic.
@@ -84,11 +84,11 @@ Safe to re-run — existing memberships are detected and not re-invited.
 Creates private per-student repos from a template, grants isolated write access to the student only, assigns reviewers, schedules a milestone with deadline, and opens a feedback PR.
 
 ### 1. Configuration
-Edit `TEMPLATES` in `orgflow.conf`. Example with deadline:
+Edit `TEMPLATES` in `orgflow.conf`. The org comes from `ORG` — just list the repo name. Example with deadline:
 
 ```
 TEMPLATES=(
-    "H8-P1-S2/fsjs-p1-v2-c3|2026-08-31 23:59"
+    "fsjs-p1-v2-c3|2026-08-31 23:59"
 )
 ```
 
