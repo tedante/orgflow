@@ -2,13 +2,14 @@
 
 ## What This Repo Is
 
-GitHub Organization automation toolkit for Hacktiv8 lectures. Two standalone bash scripts + config files + README guide. No application code, no dependencies, no tests.
+GitHub Organization automation toolkit for Hacktiv8 lectures. Three standalone bash scripts (the engines) + a Node/Ink TUI front-end that runs them + config files + README guide. No tests.
 
 ## Stack
 
 - **Bash** scripts (run with `bash <script>.sh [--dry-run]`, not executable-triggered)
-- **`gh` CLI** (GitHub CLI) — sole external dependency, authenticated with `admin:org` scope
-- No package manager, no lockfile, no build step
+- **`gh` CLI** (GitHub CLI) — sole external dependency for the scripts, authenticated with `admin:org` scope
+- **Node.js** (>= 18) + **Ink** (React-based TUI) — `src/` front-end; spawned via `tsx` loader, no build step
+- npm for JS deps (`package.json` + lockfile)
 
 ## Repo Map
 
@@ -17,22 +18,26 @@ GitHub Organization automation toolkit for Hacktiv8 lectures. Two standalone bas
 | `README.md` | Instructor guide: prerequisites (`gh auth login`, `gh auth refresh -h github.com -s admin:org`), dry-run + usage flow |
 | `invite.sh` | Onboard students: ensure org team exists (secret privacy), invite users as `direct_member` linked to team |
 | `create-repo.sh` | Bulk provisioning: create private per-student repos from template, isolated write access, reviewers, milestone + issue w/ deadline, feedback PR |
-| `clone-repos.sh` | Clone all cohort repos: for each `TEMPLATES` entry, clone `TEAM_NAME-<template>-<user>` repos into `./<template>/<repo>/`, only for `USERS` and only if the repo exists in the org. Only needs read access — no `admin:org` |
-| `orgflow.conf` (git-ignored) | Shared config for both scripts — `USERS`, `ORG`, `TEAM_NAME`, `REVIEWERS`, `TEMPLATES` |
+| `clone-repos.sh` | Clone all cohort repos: for each `TEMPLATES` entry, clone `TEAM_NAME-<template>-<user>` repos into `$CLONE_DIR/<template>/<repo>/` (`CLONE_DIR` optional, default current dir), only for `USERS` and only if the repo exists in the org. Only needs read access — no `admin:org` |
+| `orgflow.conf` (git-ignored) | Shared config for all three scripts — `USERS`, `ORG`, `TEAM_NAME`, `REVIEWERS`, `TEMPLATES`, `CLONE_DIR` |
 | `orgflow.conf.example` | Committed template; copy to `orgflow.conf` and edit |
+| `src/index.jsx` | TUI entry: status bar (config + `gh` auth), cursor menu, run view with streamed script output, real-mode confirm |
+| `src/config.js` | Parses `orgflow.conf` (bash `KEY="value"` + `KEY=(...)` array format) for display |
+| `src/runner.js` | `spawn` wrapper: runs bash scripts / `gh`, streams stdout+stderr lines, resolves `{code, lines}` |
 
 ## Config Conventions
 
 - Single shared config: `orgflow.conf` at repo root, `source`d by both scripts. **Git-ignored** — cohort data is local, never committed.
 - `CONFIG_FILE` env var overrides the config path (used for testing/previews).
 - `USERS` and `REVIEWERS` are **plain strings** (space/newline-separated, no quotes — paste as-is). Every script converts them to arrays right after `source` (`USERS_ARR=($USERS); USERS=("${USERS_ARR[@]}")`). Safe because GitHub username charset is `[a-zA-Z0-9-]` — no glob characters.
-- `ORG` target org (invite.sh only — create-repo.sh derives org from `TEMPLATES[0]`), `TEAM_NAME` cohort id (both; prefixes repo names), `TEMPLATES=()` with `org/repo|YYYY-MM-DD HH:MM` deadline format (create-repo.sh only). `TEMPLATES` must stay an array — each entry contains a space (`|` separator).
+- `ORG` target org (all three scripts — invite.sh, create-repo.sh, clone-repos.sh), `TEAM_NAME` cohort id (both; prefixes repo names), `TEMPLATES=()` with `repo|YYYY-MM-DD HH:MM` deadline format (create-repo.sh only) — the org is taken from `ORG`, so templates list only the repo name. `TEMPLATES` must stay an array — each entry contains a space (`|` separator).
 - `clone-repos.sh` does not use `REVIEWERS` — it derives repo names from `TEAM_NAME` + `TEMPLATES` + `USERS`. Only requires existing org access — no `admin:org` scope check, matching its read-only contract.
 
 ## CLI Contract
 
 - `bash <script>.sh --dry-run` prints the execution plan and exits 0 — **zero `gh` API calls**. Keep dry-run as an early-exit summary block, not a `gh` wrapper (wrapping breaks `$(gh api -q ...)` substitution and triggers false errors).
-- Real mode exits non-zero on: missing config file, empty required vars (`USERS`/`ORG`/`TEAM_NAME`/`REVIEWERS`/`TEMPLATES`), malformed deadline (regex `YYYY-MM-DD HH:MM`), or missing auth (`gh` not installed / no `admin:org` scope). Missing/null deadline is a warning, not an error — milestone/issue creation is skipped, matching legacy behavior.
+- `ORGFLOW_TEMPLATES` env var (create-repo.sh + clone-repos.sh): semicolon-separated template entries that **replace** `TEMPLATES` right after `source` — lets the TUI filter which templates run. Semicolon separator because entries contain spaces (deadline). Optional — unset = process all templates.
+- Real mode exits non-zero on: missing config file, empty required vars (`USERS`/`ORG`/`TEAM_NAME`/`TEMPLATES`), malformed deadline (regex `YYYY-MM-DD HH:MM`), or missing auth (`gh` not installed / no `admin:org` scope). `REVIEWERS` is **optional** — empty means no reviewers are assigned. Missing/null deadline is a warning, not an error — milestone/issue creation is skipped, matching legacy behavior.
 - New validation must run before the dry-run exit block so dry-run never sees invalid config.
 
 ## Critical Invariants (do not break)
@@ -46,8 +51,17 @@ GitHub Organization automation toolkit for Hacktiv8 lectures. Two standalone bas
 ## Common Operations
 
 - New cohort: `cp orgflow.conf.example orgflow.conf`, edit, then `bash <script>.sh --dry-run` → `bash <script>.sh`
+- TUI: `npm start` — all three scripts (dry-run or real) from one menu; real-mode runs ask for confirmation
 - Re-run after partial failure: safe — scripts skip what already exists
 - Check script syntax: `bash -n <script>.sh`
+
+## TUI Conventions
+
+- `src/` is a **UI layer only** — it spawns the bash scripts via `runner.js`, never re-implements provisioning logic. Keep it that way: the scripts hold the GitHub API logic and its invariants.
+- Run scripts with `cwd: PROJECT_ROOT` and inherited env so they resolve `orgflow.conf` themselves. Pass `CONFIG_FILE` env var for previews/tests.
+- Real-mode menu items (`invite.sh`, `create-repo.sh` without `--dry-run`) must keep the y/n confirm gate before `startRun`.
+- Create/Clone menu items route through a multi-select template picker (when `TEMPLATES` > 1); selection is passed to the script as `ORGFLOW_TEMPLATES` env (`;`-separated raw entries). Single template skips the picker.
+- New bash config vars are picked up by `src/config.js` — extend the parser there if the format changes.
 
 ## Security Notes
 

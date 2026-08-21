@@ -27,9 +27,20 @@ USERS=("${USERS_ARR[@]}")
 REVIEWERS_ARR=($REVIEWERS)
 REVIEWERS=("${REVIEWERS_ARR[@]}")
 
+# Template filter (set by TUI): semicolon-separated entries replace TEMPLATES
+if [ -n "$ORGFLOW_TEMPLATES" ]; then
+    IFS=';' read -ra TEMPLATES_OVERRIDE <<< "$ORGFLOW_TEMPLATES"
+    TEMPLATES=("${TEMPLATES_OVERRIDE[@]}")
+fi
+
 # ------------------------------------------
 # Pre-flight validation
 # ------------------------------------------
+if [ -z "$ORG" ]; then
+    echo "Error: ORG is not set in $CONFIG_FILE."
+    exit 1
+fi
+
 if [ -z "$TEAM_NAME" ]; then
     echo "Error: TEAM_NAME is not set in $CONFIG_FILE."
     exit 1
@@ -37,11 +48,6 @@ fi
 
 if [ "${#USERS[@]}" -eq 0 ]; then
     echo "Error: USERS is empty in $CONFIG_FILE."
-    exit 1
-fi
-
-if [ "${#REVIEWERS[@]}" -eq 0 ]; then
-    echo "Error: REVIEWERS is empty in $CONFIG_FILE."
     exit 1
 fi
 
@@ -59,27 +65,19 @@ for ITEM in "${TEMPLATES[@]}"; do
         *)
             echo "Warning: TEMPLATES entry '$ITEM' has no deadline '|' separator."
             echo "  Milestone/issue creation will be skipped for this template."
-            echo "  Expected format: \"organization/repository|YYYY-MM-DD HH:MM\""
+            echo "  Expected format: \"repository|YYYY-MM-DD HH:MM\""
             continue
-            ;;
-    esac
-    case "$TEMPLATE_REPO" in
-        */*) ;;
-        *)
-            echo "Error: Invalid template '$TEMPLATE_REPO' in TEMPLATES entry '$ITEM'."
-            echo "Expected format: \"organization/repository|YYYY-MM-DD HH:MM\""
-            exit 1
             ;;
     esac
     if [ -z "$DEADLINE" ]; then
         echo "Warning: TEMPLATES entry '$ITEM' has no deadline."
         echo "  Milestone/issue creation will be skipped for this template."
-        echo "  Expected format: \"organization/repository|YYYY-MM-DD HH:MM\""
+        echo "  Expected format: \"repository|YYYY-MM-DD HH:MM\""
         continue
     fi
     if ! [[ "$DEADLINE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}\ [0-9]{2}:[0-9]{2}$ ]]; then
         echo "Error: Invalid deadline '$DEADLINE' in TEMPLATES entry '$ITEM'."
-        echo "Expected format: \"organization/repository|YYYY-MM-DD HH:MM\""
+        echo "Expected format: \"repository|YYYY-MM-DD HH:MM\""
         exit 1
     fi
 done
@@ -106,9 +104,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
                 DEADLINE="none"
                 ;;
         esac
-        REPO_BASENAME=$(echo "$TEMPLATE_REPO" | cut -d'/' -f2)
-        CLEAN_REPO_NAME=$(echo "$REPO_BASENAME" | sed -E 's/(^|[-_])template([-_]|$)/\1/g; s/^[-_]//; s/[-_]$//')
-        ORG=$(echo "$TEMPLATE_REPO" | cut -d'/' -f1)
+        CLEAN_REPO_NAME=$(echo "$TEMPLATE_REPO" | sed -E 's/(^|[-_])template([-_]|$)/\1/g; s/^[-_]//; s/[-_]$//')
         echo "Template: $TEMPLATE_REPO (deadline: ${DEADLINE:-none})"
         echo "  Would create ${#USERS[@]} private repos (write: student, maintain: reviewers):"
         for USER in "${USERS[@]}"; do
@@ -143,9 +139,6 @@ if ! gh auth status -h github.com 2>&1 | grep -q "admin:org"; then
 fi
 
 # ==========================================
-
-# Extract Organization from first template (assuming all in same org)
-ORG=$(echo "${TEMPLATES[0]}" | cut -d'/' -f1)
 
 echo "=========================================="
 echo "Synchronizing Team Memberships: $TEAM_NAME"
@@ -210,10 +203,7 @@ for ITEM in "${TEMPLATES[@]}"; do
       ;;
   esac
 
-  ORG=$(echo "$TEMPLATE_REPO" | cut -d'/' -f1)
-  REPO_BASENAME=$(echo "$TEMPLATE_REPO" | cut -d'/' -f2)
-
-  CLEAN_REPO_NAME=$(echo "$REPO_BASENAME" | sed -E 's/(^|[-_])template([-_]|$)/\1/g; s/^[-_]//; s/[-_]$//')
+  CLEAN_REPO_NAME=$(echo "$TEMPLATE_REPO" | sed -E 's/(^|[-_])template([-_]|$)/\1/g; s/^[-_]//; s/[-_]$//')
 
   echo "##########################################"
   echo "TEMPLATE: $TEMPLATE_REPO"
@@ -233,7 +223,7 @@ for ITEM in "${TEMPLATES[@]}"; do
     echo "Creating repository: $NEW_REPO"
 
     # 1. Create Repository from Template
-    gh repo create "$NEW_REPO" --template "$TEMPLATE_REPO" --private
+    gh repo create "$NEW_REPO" --template "$ORG/$TEMPLATE_REPO" --private
 
     if [ $? -ne 0 ]; then
       echo "Error creating repository $NEW_REPO. Skipping to next user."
@@ -299,13 +289,22 @@ for ITEM in "${TEMPLATES[@]}"; do
       IFS=,
       echo "${REVIEWERS[*]}"
     )
-    gh pr create \
-      --repo "$NEW_REPO" \
-      --title "Feedback" \
-      --body "Hi @$USER, this Pull Request is created for your feedback and grading. Please do not close this PR." \
-      --base "feedback" \
-      --head "$DEFAULT_BRANCH" \
-      --reviewer "$REVIEWERS_STR"
+    if [ -n "$REVIEWERS_STR" ]; then
+      gh pr create \
+        --repo "$NEW_REPO" \
+        --title "Feedback" \
+        --body "Hi @$USER, this Pull Request is created for your feedback and grading. Please do not close this PR." \
+        --base "feedback" \
+        --head "$DEFAULT_BRANCH" \
+        --reviewer "$REVIEWERS_STR"
+    else
+      gh pr create \
+        --repo "$NEW_REPO" \
+        --title "Feedback" \
+        --body "Hi @$USER, this Pull Request is created for your feedback and grading. Please do not close this PR." \
+        --base "feedback" \
+        --head "$DEFAULT_BRANCH"
+    fi
 
     echo "Successfully provisioned for $USER"
     echo "------------------------------------------"
