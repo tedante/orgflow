@@ -30,14 +30,14 @@ GitHub Organization automation toolkit for Hacktiv8 lectures. Three standalone b
 - Single shared config: `orgflow.conf` at repo root, `source`d by both scripts. **Git-ignored** — cohort data is local, never committed.
 - `CONFIG_FILE` env var overrides the config path (used for testing/previews).
 - `USERS` and `REVIEWERS` are **plain strings** (space/newline-separated, no quotes — paste as-is). Every script converts them to arrays right after `source` (`USERS_ARR=($USERS); USERS=("${USERS_ARR[@]}")`). Safe because GitHub username charset is `[a-zA-Z0-9-]` — no glob characters.
-- `ORG` target org (invite.sh only — create-repo.sh derives org from `TEMPLATES[0]`), `TEAM_NAME` cohort id (both; prefixes repo names), `TEMPLATES=()` with `org/repo|YYYY-MM-DD HH:MM` deadline format (create-repo.sh only). `TEMPLATES` must stay an array — each entry contains a space (`|` separator).
+- `ORG` target org (all three scripts — invite.sh, create-repo.sh, clone-repos.sh), `TEAM_NAME` cohort id (both; prefixes repo names), `TEMPLATES=()` with `repo|YYYY-MM-DD HH:MM` deadline format (create-repo.sh only) — the org is taken from `ORG`, so templates list only the repo name. `TEMPLATES` must stay an array — each entry contains a space (`|` separator).
 - `clone-repos.sh` does not use `REVIEWERS` — it derives repo names from `TEAM_NAME` + `TEMPLATES` + `USERS`. Only requires existing org access — no `admin:org` scope check, matching its read-only contract.
 
 ## CLI Contract
 
 - `bash <script>.sh --dry-run` prints the execution plan and exits 0 — **zero `gh` API calls**. Keep dry-run as an early-exit summary block, not a `gh` wrapper (wrapping breaks `$(gh api -q ...)` substitution and triggers false errors).
 - `ORGFLOW_TEMPLATES` env var (create-repo.sh + clone-repos.sh): semicolon-separated template entries that **replace** `TEMPLATES` right after `source` — lets the TUI filter which templates run. Semicolon separator because entries contain spaces (deadline). Optional — unset = process all templates.
-- Real mode exits non-zero on: missing config file, empty required vars (`USERS`/`ORG`/`TEAM_NAME`/`REVIEWERS`/`TEMPLATES`), malformed deadline (regex `YYYY-MM-DD HH:MM`), or missing auth (`gh` not installed / no `admin:org` scope). Missing/null deadline is a warning, not an error — milestone/issue creation is skipped, matching legacy behavior.
+- Real mode exits non-zero on: missing config file, empty required vars (`USERS`/`ORG`/`TEAM_NAME`/`TEMPLATES`), malformed deadline (regex `YYYY-MM-DD HH:MM`), or missing auth (`gh` not installed / no `admin:org` scope). `REVIEWERS` is **optional** — empty means no reviewers are assigned. Missing/null deadline is a warning, not an error — milestone/issue creation is skipped, matching legacy behavior.
 - New validation must run before the dry-run exit block so dry-run never sees invalid config.
 
 ## Critical Invariants (do not break)

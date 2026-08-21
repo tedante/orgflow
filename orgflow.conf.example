@@ -9,8 +9,8 @@
 USERS="student-username-1
 student-username-2"
 
-# Organization name — used by invite.sh
-# (create-repo.sh derives the org from TEMPLATES instead)
+# Organization name — used by ALL scripts
+# (invite.sh, create-repo.sh, clone-repos.sh)
 ORG="YOUR-ORG"
 
 # Cohort team name — used by BOTH scripts
@@ -19,13 +19,15 @@ TEAM_NAME="hck-100"
 
 # Reviewers — instructors/TA (create-repo.sh only)
 # Plain space/newline-separated list — no quotes needed
+# Optional: leave empty to skip assigning reviewers
 REVIEWERS="instructor-username"
 
 # Template repositories + submission deadlines (create-repo.sh only)
-# Format: "organization/repository|YYYY-MM-DD HH:MM" (deadline in WIB)
+# Format: "repository|YYYY-MM-DD HH:MM" (deadline in WIB)
+# The org is taken from ORG above — just the repo name here.
 # Deadline optional; without it, milestone/issue creation is skipped
 TEMPLATES=(
-    "YOUR-ORG/assignment-template|2026-08-31 23:59"
+    "assignment-template|2026-08-31 23:59"
 )
 
 # Clone base directory — clone-repos.sh only

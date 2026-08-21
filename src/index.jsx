@@ -6,54 +6,66 @@ import { runScript } from "./runner.js";
 
 const RUN_ITEMS = [
   {
+    section: "DRY-RUN",
     label: "Invite students",
+    desc: "preview invitations — no changes",
     script: "invite.sh",
     args: ["--dry-run"],
     real: false,
     filter: false,
   },
   {
-    label: "Invite students (real)",
-    script: "invite.sh",
-    args: [],
-    real: true,
-    filter: false,
-  },
-  {
+    section: "DRY-RUN",
     label: "Create repos",
+    desc: "preview repo plan — no changes",
     script: "create-repo.sh",
     args: ["--dry-run"],
     real: false,
     filter: true,
   },
   {
-    label: "Create repos (real)",
+    section: "DRY-RUN",
+    label: "Clone repos",
+    desc: "preview clone plan — no changes",
+    script: "clone-repos.sh",
+    args: ["--dry-run"],
+    real: false,
+    filter: true,
+  },
+  {
+    section: "EXECUTION",
+    label: "Invite students",
+    desc: "send real org invitations",
+    script: "invite.sh",
+    args: [],
+    real: true,
+    filter: false,
+  },
+  {
+    section: "EXECUTION",
+    label: "Create repos",
+    desc: "create real repos + feedback PRs",
     script: "create-repo.sh",
     args: [],
     real: true,
     filter: true,
   },
   {
+    section: "EXECUTION",
     label: "Clone repos",
-    script: "clone-repos.sh",
-    args: ["--dry-run"],
-    real: false,
-    filter: true,
-  },
-  {
-    label: "Clone repos",
+    desc: "clone real cohort repos",
     script: "clone-repos.sh",
     args: [],
-    real: false,
+    real: true,
     filter: true,
   },
 ];
 
 const MENU_ITEMS = [
   ...RUN_ITEMS.map((item, i) => ({ ...item, key: `run-${i}`, action: "run" })),
-  { key: "refresh", action: "refresh", label: "Refresh status" },
-  { key: "auth", action: "auth", label: "Check gh auth" },
-  { key: "quit", action: "quit", label: "Quit" },
+  { key: "refresh", action: "refresh", label: "Refresh status", section: "OTHER" },
+  { key: "auth", action: "auth", label: "Check gh auth", section: "OTHER" },
+  { key: "quit", action: "quit", label: "Quit", section: "OTHER" },
 ];
 
 function StatusBar({ config, auth }) {
@@ -98,25 +110,46 @@ function AuthStatus({ auth }) {
 }
 
 function Menu({ items, cursor }) {
+  let lastSection = null;
   return (
     <Box flexDirection="column">
       <Text bold color="cyan">
         Orgflow TUI
       </Text>
       <Box marginTop={1} flexDirection="column">
-        {items.map((item, i) => (
-          <Text
-            key={item.key}
-            color={i === cursor ? "green" : "white"}
-            bold={i === cursor}
-          >
-            {i === cursor ? "▶ " : "  "}
-            {item.label}
-          </Text>
-        ))}
+        {items.map((item, i) => {
+          const header =
+            item.section && item.section !== lastSection ? (
+              <Text bold color={item.section === "EXECUTION" ? "yellow" : "magenta"}>
+                {item.section === "EXECUTION"
+                  ? "▶ EXECUTION (real GitHub changes)"
+                  : item.section === "DRY-RUN"
+                    ? "▶ DRY-RUN (preview only, no changes)"
+                    : "▶ OTHER"}
+              </Text>
+            ) : null;
+          lastSection = item.section;
+          return (
+            <Box key={item.key} flexDirection="column">
+              {header}
+              <Text
+                color={i === cursor ? "green" : "white"}
+                bold={i === cursor}
+              >
+                {i === cursor ? "  ▶ " : "    "}
+                {item.label}
+                {item.desc ? <Text dim> — {item.desc}</Text> : null}
+              </Text>
+            </Box>
+          );
+        })}
       </Box>
       <Text dim marginTop={1}>
         ↑↓ navigate · Enter select · q quit
+      </Text>
+      <Text dim>
+        DRY-RUN prints a plan and makes no GitHub changes. EXECUTION makes real
+        changes and asks for confirmation first.
       </Text>
     </Box>
   );
