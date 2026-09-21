@@ -1,4 +1,4 @@
 # Local cohort config — edit per cohort, never commit
 orgflow.conf
-
+.omo
 node_modules/

@@ -1,89 +1,91 @@
 #!/usr/bin/env node --import tsx
 import React, { useCallback, useEffect, useState } from "react";
-import { Box, Static, Text, render, useApp, useInput } from "ink";
+import { Box, Static, Text, render, useApp, useInput, useStdout } from "ink";
 import { PROJECT_ROOT, parseConfigFile, parseTemplateItem } from "./config.js";
 import { runScript } from "./runner.js";
 
-const RUN_ITEMS = [
+// Single action list — no DRY-RUN duplication.
+// Every action runs: template pick (optional) → auto-preview (--dry-run)
+// → y confirm → real execution. The --dry-run flag stays as the preview
+// mechanism, it is just no longer a separate menu item.
+const ACTIONS = [
   {
-    section: "DRY-RUN",
+    key: "invite",
     label: "Invite students",
-    desc: "preview invitations — no changes",
     script: "invite.sh",
-    args: ["--dry-run"],
-    real: false,
     filter: false,
   },
   {
-    section: "DRY-RUN",
+    key: "create",
     label: "Create repos",
-    desc: "preview repo plan — no changes",
     script: "create-repo.sh",
-    args: ["--dry-run"],
-    real: false,
     filter: true,
   },
   {
-    section: "DRY-RUN",
+    key: "clone",
     label: "Clone repos",
-    desc: "preview clone plan — no changes",
     script: "clone-repos.sh",
-    args: ["--dry-run"],
-    real: false,
-    filter: true,
-  },
-  {
-    section: "EXECUTION",
-    label: "Invite students",
-    desc: "send real org invitations",
-    script: "invite.sh",
-    args: [],
-    real: true,
-    filter: false,
-  },
-  {
-    section: "EXECUTION",
-    label: "Create repos",
-    desc: "create real repos + feedback PRs",
-    script: "create-repo.sh",
-    args: [],
-    real: true,
-    filter: true,
-  },
-  {
-    section: "EXECUTION",
-    label: "Clone repos",
-    desc: "clone real cohort repos",
-    script: "clone-repos.sh",
-    args: [],
-    real: true,
     filter: true,
   },
 ];
 
-const MENU_ITEMS = [
-  ...RUN_ITEMS.map((item, i) => ({ ...item, key: `run-${i}`, action: "run" })),
-  { key: "refresh", action: "refresh", label: "Refresh status", section: "OTHER" },
-  { key: "auth", action: "auth", label: "Check gh auth", section: "OTHER" },
-  { key: "quit", action: "quit", label: "Quit", section: "OTHER" },
+const OTHER_ITEMS = [
+  { key: "refresh", action: "refresh", label: "Refresh status", hint: "R" },
+  { key: "auth", action: "auth", label: "Check gh auth", hint: "A" },
+  { key: "quit", action: "quit", label: "Quit", hint: "Q" },
 ];
+
+function actionHint(action, config) {
+  if (!config.ok) return "config missing";
+  const { org, teamName, users, templates, cloneDir } = config.config;
+  if (action.key === "invite")
+    return `${users.length} users → team ${teamName || "?"}`;
+  if (action.key === "create")
+    return `${templates.length} templates × ${users.length} users = ${
+      templates.length * users.length
+    } repos`;
+  if (action.key === "clone")
+    return `${templates.length} templates → ${cloneDir || "."}/`;
+  return "";
+}
 
 function StatusBar({ config, auth }) {
   if (!config.ok) {
-    return <Text color="yellow">Config: {config.message}</Text>;
+    return (
+      <Box flexDirection="column">
+        <Text color="red" bold>
+          Config error
+        </Text>
+        <Text color="yellow">{config.message}</Text>
+        <Text dim>Actions are disabled until the config loads.</Text>
+      </Box>
+    );
   }
-  const { org, teamName, users, templates, cloneDir } = config.config;
+  const { org, teamName, users, reviewers, templates, cloneDir } =
+    config.config;
   return (
     <Box flexDirection="column">
-      <Text>
-        Config: org=<Text bold>{org || "?"}</Text> team=
-        <Text bold>{teamName || "?"}</Text> users=
-        <Text bold>{users.length}</Text> templates=
-        <Text bold>{templates.length}</Text>
-        {cloneDir ? ` cloneDir=${cloneDir}` : ""}
+      <Text bold>
+        Orgflow <Text dim>·</Text> <Text color="cyan">{org || "?"}</Text>{" "}
+        <Text dim>/</Text> {teamName || "?"}
       </Text>
       <Text>
-        gh: <AuthStatus auth={auth} />
+        <Text dim>users </Text>
+        <Text bold>{users.length}</Text>
+        <Text dim> · templates </Text>
+        <Text bold>{templates.length}</Text>
+        <Text dim> · reviewers </Text>
+        <Text bold>{reviewers.length}</Text>
+        {cloneDir ? (
+          <>
+            <Text dim> · dir </Text>
+            {cloneDir}
+          </>
+        ) : null}
+      </Text>
+      <Text>
+        <Text dim>gh </Text>
+        <AuthStatus auth={auth} />
       </Text>
     </Box>
   );
@@ -102,98 +104,57 @@ function AuthStatus({ auth }) {
   return auth.adminOrg ? (
     <Text color="green">OK (admin:org)</Text>
   ) : (
-    <Text color="yellow">
-      OK — but no admin:org scope, refresh with gh auth refresh -h github.com -s
-      admin:org
-    </Text>
+    <Text color="yellow">OK — no admin:org scope</Text>
   );
 }
 
-function Menu({ items, cursor }) {
-  let lastSection = null;
+function Menu({ config, cursor }) {
+  const total = ACTIONS.length + OTHER_ITEMS.length;
+  const cursorAction = cursor < ACTIONS.length;
   return (
     <Box flexDirection="column">
-      <Text bold color="cyan">
-        Orgflow TUI
-      </Text>
       <Box marginTop={1} flexDirection="column">
-        {items.map((item, i) => {
-          const header =
-            item.section && item.section !== lastSection ? (
-              <Text bold color={item.section === "EXECUTION" ? "yellow" : "magenta"}>
-                {item.section === "EXECUTION"
-                  ? "▶ EXECUTION (real GitHub changes)"
-                  : item.section === "DRY-RUN"
-                    ? "▶ DRY-RUN (preview only, no changes)"
-                    : "▶ OTHER"}
+        {ACTIONS.map((a, i) => (
+          <Text
+            key={a.key}
+            color={i === cursor ? "green" : undefined}
+            bold={i === cursor}
+            dim={!config.ok}
+          >
+            {i === cursor ? "▶ " : "  "}
+            <Text bold>{i + 1}</Text> {a.label}{" "}
+            <Text dim>— {actionHint(a, config)}</Text>
+          </Text>
+        ))}
+        <Box marginTop={1} flexDirection="column">
+          {OTHER_ITEMS.map((o, j) => {
+            const i = ACTIONS.length + j;
+            return (
+              <Text key={o.key} color={i === cursor ? "green" : "white"} dim>
+                {i === cursor ? "▶ " : "  "}
+                {o.label} <Text dim>({o.hint})</Text>
               </Text>
-            ) : null;
-          lastSection = item.section;
-          return (
-            <Box key={item.key} flexDirection="column">
-              {header}
-              <Text
-                color={i === cursor ? "green" : "white"}
-                bold={i === cursor}
-              >
-                {i === cursor ? "  ▶ " : "    "}
-                {item.label}
-                {item.desc ? <Text dim> — {item.desc}</Text> : null}
-              </Text>
-            </Box>
-          );
-        })}
+            );
+          })}
+        </Box>
       </Box>
       <Text dim marginTop={1}>
-        ↑↓ navigate · Enter select · q quit
+        ↑↓ or 1–{ACTIONS.length} select · Enter preview · q quit
       </Text>
-      <Text dim>
-        DRY-RUN prints a plan and makes no GitHub changes. EXECUTION makes real
-        changes and asks for confirmation first.
-      </Text>
-    </Box>
-  );
-}
-
-function RunView({ run }) {
-  const { script, args, running, code, error } = run;
-  const status =
-    run.error !== null
-      ? `failed: ${run.error}`
-      : running
-        ? "running…"
-        : code === 0
-          ? `exited ${code}`
-          : `exited ${code} — see output above`;
-  return (
-    <Box flexDirection="column">
-      <Box paddingX={1} borderStyle="round">
-        <Text bold>
-          {script} {args.join(" ")}
-        </Text>
-        <Text dim> — {status}</Text>
-      </Box>
-      <Static items={run.lines}>
-        {(line, i) => (
-          <Text key={i} color={run.error !== null ? "red" : undefined}>
-            {line}
-          </Text>
-        )}
-      </Static>
-      {!running && (
-        <Text dim marginTop={1}>
-          Press Enter to return to menu
-        </Text>
-      )}
+      <Text dim>Every action shows a preview first. Nothing runs without y.</Text>
     </Box>
   );
 }
 
 function TemplatePicker({ title, templates, selected, cursor }) {
+  const count = selected.filter(Boolean).length;
   return (
     <Box flexDirection="column">
       <Text bold color="cyan">
         {title}
+      </Text>
+      <Text dim>
+        {count}/{templates.length} selected
       </Text>
       <Box marginTop={1} flexDirection="column">
         {templates.map((t, i) => (
@@ -208,10 +169,77 @@ function TemplatePicker({ title, templates, selected, cursor }) {
         ))}
       </Box>
       <Text dim marginTop={1}>
-        space toggle · Enter proceed · esc back
+        space toggle · a select all/none · Enter preview · esc back
       </Text>
-      {selected.every((s) => !s) && (
+      {count === 0 && (
         <Text color="yellow">Select at least one template</Text>
+      )}
+    </Box>
+  );
+}
+
+function PreviewView({ preview }) {
+  const { label, summary, lines, running, code } = preview;
+  const status = running
+    ? "loading preview…"
+    : code === 0
+      ? `preview ok — ${lines.length} lines`
+      : `preview failed (exit ${code})`;
+  return (
+    <Box flexDirection="column">
+      <Text bold>
+        Preview <Text dim>·</Text> {label}
+      </Text>
+      {summary ? <Text dim>{summary}</Text> : null}
+      <Text dim>{status} — no changes made</Text>
+      <Box marginTop={1} flexDirection="column">
+        <Static items={lines}>
+          {(line, i) => <Text key={i}>{line}</Text>}
+        </Static>
+      </Box>
+      {!running && code === 0 && (
+        <Box marginTop={1} flexDirection="column">
+          <Text color="yellow" bold>
+            Run for real? This cannot be undone.
+          </Text>
+          <Text dim>y execute · n back</Text>
+        </Box>
+      )}
+      {!running && code !== 0 && (
+        <Text dim marginTop={1}>
+          Fix the issue above. Enter to go back.
+        </Text>
+      )}
+    </Box>
+  );
+}
+
+function RunView({ run }) {
+  const { label, lines, running, code, error } = run;
+  const status =
+    error !== null
+      ? `failed: ${error}`
+      : running
+        ? "running…"
+        : code === 0
+          ? `done (exit ${code})`
+          : `failed (exit ${code}) — see output above`;
+  return (
+    <Box flexDirection="column">
+      <Text bold>
+        {label} <Text dim>— {status}</Text>
+      </Text>
+      <Static items={lines}>
+        {(line, i) => (
+          <Text key={i} color={error !== null ? "red" : undefined}>
+            {line}
+          </Text>
+        )}
+      </Static>
+      {!running && (
+        <Text dim marginTop={1}>
+          Press Enter to return to menu
+        </Text>
       )}
     </Box>
   );
@@ -219,16 +247,22 @@ function TemplatePicker({ title, templates, selected, cursor }) {
 
 function App() {
   const { exit } = useApp();
+  const { stdout } = useStdout();
+  const cols = stdout?.columns ?? 80;
+  const frameHeight = Math.max((stdout?.rows ?? 24) - 2, 8);
   const [view, setView] = useState("menu");
   const [cursor, setCursor] = useState(0);
   const [config, setConfig] = useState({ ok: false, message: "loading…" });
   const [auth, setAuth] = useState({ status: "checking" });
   const [pending, setPending] = useState(null);
   const [pendingEnv, setPendingEnv] = useState({});
+  const [pendingSummary, setPendingSummary] = useState("");
   const [selected, setSelected] = useState([]);
   const [tplCursor, setTplCursor] = useState(0);
+  const [preview, setPreview] = useState(null);
   const [run, setRun] = useState(null);
 
+  const totalItems = ACTIONS.length + OTHER_ITEMS.length;
   const templateItems = config.ok
     ? config.config.templates.map(parseTemplateItem)
     : [];
@@ -264,11 +298,63 @@ function App() {
     refresh();
   }, [refresh]);
 
-  const startRun = useCallback(async (item, env = {}) => {
+  const summarizeEnv = useCallback(
+    (action, env) => {
+      if (!config.ok) return "";
+      const picked = env.ORGFLOW_TEMPLATES
+        ? env.ORGFLOW_TEMPLATES.split(";").map(
+            (raw) => parseTemplateItem(raw).name,
+          )
+        : config.config.templates.map((t) => parseTemplateItem(t).name);
+      const users = config.config.users.length;
+      if (action.key === "invite")
+        return `${users} users → team ${config.config.teamName}`;
+      if (action.key === "create")
+        return `${picked.length} templates × ${users} users = ${
+          picked.length * users
+        } repos (${picked.join(", ")})`;
+      return `${picked.join(", ")} → ${config.config.cloneDir || "."}/`;
+    },
+    [config],
+  );
+
+  const startPreview = useCallback(
+    async (action, env = {}) => {
+      const summary = summarizeEnv(action, env);
+      setPending(action);
+      setPendingEnv(env);
+      setPendingSummary(summary);
+      setView("preview");
+      setPreview({
+        label: action.label,
+        summary,
+        script: action.script,
+        lines: [],
+        running: true,
+        code: null,
+      });
+      const r = await runScript({
+        command: "bash",
+        args: [action.script, "--dry-run"],
+        cwd: PROJECT_ROOT,
+        env,
+        onLine: (line) =>
+          setPreview((prev) =>
+            prev ? { ...prev, lines: [...prev.lines, line] } : prev,
+          ),
+      });
+      setPreview((prev) =>
+        prev ? { ...prev, running: false, code: r.code } : prev,
+      );
+    },
+    [summarizeEnv],
+  );
+
+  const startRun = useCallback(async (action, env = {}) => {
     setView("run");
     setRun({
-      script: item.script,
-      args: item.args,
+      label: action.label,
+      script: action.script,
       lines: [],
       running: true,
       code: null,
@@ -276,11 +362,11 @@ function App() {
     });
     const r = await runScript({
       command: "bash",
-      args: [item.script, ...item.args],
+      args: [action.script],
       cwd: PROJECT_ROOT,
       env,
       onLine: (line) =>
-        setRun((prev) => ({ ...prev, lines: [...prev.lines, line] })),
+        setRun((prev) => (prev ? { ...prev, lines: [...prev.lines, line] } : prev)),
     });
     setRun((prev) => ({
       ...prev,
@@ -290,48 +376,58 @@ function App() {
     }));
   }, []);
 
-  const onEnter = useCallback(() => {
-    const item = MENU_ITEMS[cursor];
-    switch (item.action) {
-      case "quit":
-        exit();
-        break;
-      case "refresh":
-        refresh();
-        break;
-      case "auth":
-        checkAuth();
-        break;
-      case "run":
-        if (item.filter && config.ok && config.config.templates.length > 1) {
-          setPending(item);
-          setPendingEnv({});
-          setSelected(config.config.templates.map(() => false));
-          setTplCursor(0);
-          setView("templates");
-        } else if (item.real) {
-          setPending(item);
-          setPendingEnv({});
-          setView("confirm");
-        } else {
-          startRun(item);
-        }
-        break;
-    }
-  }, [cursor, exit, refresh, checkAuth, startRun, config]);
+  const enterAction = useCallback(
+    (action) => {
+      if (!config.ok) return;
+      if (action.filter && config.config.templates.length > 1) {
+        setPending(action);
+        setPendingEnv({});
+        setSelected(config.config.templates.map(() => true));
+        setTplCursor(0);
+        setView("templates");
+      } else {
+        startPreview(action, {});
+      }
+    },
+    [config, startPreview],
+  );
+
+  const onMenuSelect = useCallback(
+    (index) => {
+      if (index < ACTIONS.length) {
+        enterAction(ACTIONS[index]);
+        return;
+      }
+      const other = OTHER_ITEMS[index - ACTIONS.length];
+      if (other.action === "quit") exit();
+      else if (other.action === "refresh") refresh();
+      else if (other.action === "auth") checkAuth();
+    },
+    [enterAction, exit, refresh, checkAuth],
+  );
 
   useInput((input, key) => {
     if (view === "menu") {
       if (key.upArrow)
-        setCursor((c) => (c - 1 + MENU_ITEMS.length) % MENU_ITEMS.length);
-      else if (key.downArrow) setCursor((c) => (c + 1) % MENU_ITEMS.length);
-      else if (key.return) onEnter();
+        setCursor((c) => (c - 1 + totalItems) % totalItems);
+      else if (key.downArrow) setCursor((c) => (c + 1) % totalItems);
+      else if (key.return) onMenuSelect(cursor);
       else if (input === "q" || key.escape) exit();
+      else if (input === "r") refresh();
+      else if (input === "a") checkAuth();
+      else {
+        const num = parseInt(input, 10);
+        if (num >= 1 && num <= ACTIONS.length) onMenuSelect(num - 1);
+      }
     } else if (view === "templates") {
       if (key.upArrow) setTplCursor((c) => (c - 1 + n) % n);
       else if (key.downArrow) setTplCursor((c) => (c + 1) % n);
       else if (input === " ") {
         setSelected((prev) => prev.map((v, i) => (i === tplCursor ? !v : v)));
+      } else if (input === "a") {
+        setSelected((prev) =>
+          prev.every(Boolean) ? prev.map(() => false) : prev.map(() => true),
+        );
       } else if (key.return) {
         if (!selected.some(Boolean)) return;
         const env = {
@@ -340,52 +436,58 @@ function App() {
             .map((t) => t.raw)
             .join(";"),
         };
-        setPendingEnv(env);
-        if (pending.real) setView("confirm");
-        else startRun(pending, env);
+        startPreview(pending, env);
       } else if (key.escape) {
         setView("menu");
       }
-    } else if (view === "confirm") {
-      if (input === "y") {
-        startRun(pending, pendingEnv);
-      } else if (input === "n" || key.escape) {
-        setView("menu");
+    } else if (view === "preview") {
+      if (preview?.running) return;
+      if (preview?.code === 0) {
+        if (input === "y") startRun(pending, pendingEnv);
+        else if (input === "n" || key.escape) setView("menu");
+      } else if (preview && !preview.running) {
+        if (key.return || key.escape) setView("menu");
       }
     } else if (view === "run" && !run?.running && key.return) {
       setView("menu");
     }
   });
 
+  const centered = view === "menu" || view === "templates";
+
   return (
-    <Box padding={1}>
-      {view === "menu" && (
-        <Box flexDirection="column">
-          <StatusBar config={config} auth={auth} />
-          <Box marginTop={1} />
-          <Menu items={MENU_ITEMS} cursor={cursor} />
+    <Box
+      width={cols}
+      minHeight={frameHeight}
+      borderStyle="round"
+      borderColor="cyan"
+      paddingX={3}
+      paddingY={1}
+      flexDirection="column"
+    >
+      {(view === "menu" || view === "templates") && (
+        <StatusBar config={config} auth={auth} />
+      )}
+      {centered ? (
+        <Box flexGrow={1} alignItems="center" justifyContent="center">
+          <Box flexDirection="column">
+            {view === "menu" && <Menu config={config} cursor={cursor} />}
+            {view === "templates" && config.ok && (
+              <TemplatePicker
+                title={`Select template(s) — ${pending?.label}`}
+                templates={templateItems}
+                selected={selected}
+                cursor={tplCursor}
+              />
+            )}
+          </Box>
         </Box>
+      ) : (
+        <>
+          {view === "preview" && preview && <PreviewView preview={preview} />}
+          {view === "run" && run && <RunView run={run} />}
+        </>
       )}
-      {view === "templates" && config.ok && (
-        <TemplatePicker
-          title={`Select template(s) — ${pending?.label}`}
-          templates={templateItems}
-          selected={selected}
-          cursor={tplCursor}
-        />
-      )}
-      {view === "confirm" && (
-        <Box flexDirection="column">
-          <Text color="yellow" bold>
-            ⚠️ Run real GitHub API mutations — {pending?.label}?
-          </Text>
-          <Text dim>
-            This creates/changes org resources and cannot be undone. y confirm ·
-            n back
-          </Text>
-        </Box>
-      )}
-      {view === "run" && run && <RunView run={run} />}
     </Box>
   );
 }

@@ -218,30 +218,33 @@ npm install   # once
 npm start
 ```
 
-The TUI shows the config and `gh` auth status, and splits the menu clearly between DRY-RUN and EXECUTION:
+The TUI shows the config and `gh` auth status as three actions. There is no
+DRY-RUN menu — every action auto-runs `--dry-run` as a preview first.
+The menu is centered inside a fullscreen bordered frame; preview/run
+output stays top-aligned for readability:
 
 ```
-Orgflow TUI
+Orgflow · H8-P1-S2 / hck-99
+users 30 · templates 2 · reviewers 2 · dir cloneResult
+gh OK (admin:org)
 
-▶ DRY-RUN (preview only, no changes)
-    ▶ Invite students — preview invitations — no changes
-      Create repos — preview repo plan — no changes
-      Clone repos — preview clone plan — no changes
-▶ EXECUTION (real GitHub changes)
-      Invite students — send real org invitations
-      Create repos — create real repos + feedback PRs
-      Clone repos — clone real cohort repos
-▶ OTHER
-      Refresh status
-      Check gh auth
-      Quit
+▶ 1 Invite students — 30 users → team hck-99
+  2 Create repos — 2 templates × 30 users = 60 repos
+  3 Clone repos — 2 templates → cloneResult/
+
+  Refresh status (R)
+  Check gh auth (A)
+  Quit (Q)
 ```
 
-- DRY-RUN items run the script with `--dry-run`. They only show the plan, no changes.
-- EXECUTION items run the script for real. They always ask for confirmation (`y`/`n`) before calling the GitHub API.
-- When `TEMPLATES` has more than one entry, Create and Clone show a template picker first. Toggle which templates to process with space, then press Enter.
+Flow per action: select → (optional) template picker → preview (plan, no
+changes) → `y` execute for real → `n` back.
 
-Navigation: `↑↓` to move, `Enter` to select, `q`/`Esc` to quit.
+- Preview runs the script with `--dry-run`. It only shows the plan, no changes.
+- Execution always asks for confirmation (`y`/`n`) before calling the GitHub API.
+- When `TEMPLATES` has more than one entry, Create and Clone show a template picker first. All selected by default; space toggles, `a` selects all/none, then Enter.
+
+Navigation: `↑↓` or `1–3` to move, `Enter` to preview, `q`/`Esc` to quit.
 
 ---
 
