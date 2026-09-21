@@ -13,29 +13,16 @@
 # Needs read access to the repos (reviewer/owner) — no admin:org.
 #   --dry-run  print the clone plan without calling the GitHub API
 
-DRY_RUN=0
-[ "$1" = "--dry-run" ] && DRY_RUN=1
-
-# Load config
+# Load shared helpers (config bootstrap, validation, auth)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CONFIG_FILE="${CONFIG_FILE:-$SCRIPT_DIR/orgflow.conf}"
-if [ ! -f "$CONFIG_FILE" ]; then
-    echo "Error: Config file '$CONFIG_FILE' not found."
-    echo "Copy orgflow.conf.example to orgflow.conf and edit it before running."
+LIB_FILE="$SCRIPT_DIR/lib/common.sh"
+if [ ! -f "$LIB_FILE" ]; then
+    echo "Error: '$LIB_FILE' not found. Run clone-repos.sh from a full orgflow checkout."
     exit 1
 fi
-source "$CONFIG_FILE"
+source "$LIB_FILE"
 
-# Convert plain-string lists to arrays (conf format: no quotes, space/newline-separated)
-# Safe: GitHub username charset is [a-zA-Z0-9-], no glob characters possible
-USERS_ARR=($USERS)
-USERS=("${USERS_ARR[@]}")
-
-# Template filter (set by TUI): semicolon-separated entries replace TEMPLATES
-if [ -n "$ORGFLOW_TEMPLATES" ]; then
-    IFS=';' read -ra TEMPLATES_OVERRIDE <<< "$ORGFLOW_TEMPLATES"
-    TEMPLATES=("${TEMPLATES_OVERRIDE[@]}")
-fi
+orgflow_bootstrap "$@"
 
 # Clone base directory (clone-repos.sh only) — repos land in $CLONE_DIR/<template>/
 CLONE_DIR="${CLONE_DIR:-.}"
@@ -43,25 +30,10 @@ CLONE_DIR="${CLONE_DIR:-.}"
 # ------------------------------------------
 # Pre-flight validation
 # ------------------------------------------
-if [ -z "$ORG" ]; then
-    echo "Error: ORG is not set in $CONFIG_FILE."
-    exit 1
-fi
-
-if [ -z "$TEAM_NAME" ]; then
-    echo "Error: TEAM_NAME is not set in $CONFIG_FILE."
-    exit 1
-fi
-
-if [ "${#USERS[@]}" -eq 0 ]; then
-    echo "Error: USERS is empty in $CONFIG_FILE."
-    exit 1
-fi
-
-if [ "${#TEMPLATES[@]}" -eq 0 ]; then
-    echo "Error: TEMPLATES is empty in $CONFIG_FILE."
-    exit 1
-fi
+orgflow_require_set "$ORG" "ORG"
+orgflow_require_set "$TEAM_NAME" "TEAM_NAME"
+orgflow_require_count "${#USERS[@]}" "USERS"
+orgflow_require_count "${#TEMPLATES[@]}" "TEMPLATES"
 
 # ------------------------------------------
 # Dry-run: print plan, execute nothing
@@ -73,15 +45,8 @@ if [ "$DRY_RUN" -eq 1 ]; then
     echo "Org:  $ORG"
     echo "Team: $TEAM_NAME"
     for ITEM in "${TEMPLATES[@]}"; do
-        case "$ITEM" in
-            *"|"*)
-                TEMPLATE_REPO=$(echo "$ITEM" | cut -d'|' -f1)
-                ;;
-            *)
-                TEMPLATE_REPO="$ITEM"
-                ;;
-        esac
-        CLEAN_REPO_NAME=$(echo "$TEMPLATE_REPO" | sed -E 's/(^|[-_])template([-_]|$)/\1/g; s/^[-_]//; s/[-_]$//')
+        split_template "$ITEM" || true
+        CLEAN_REPO_NAME=$(clean_repo_name "$TEMPLATE_REPO")
         echo "Template: $TEMPLATE_REPO -> $CLONE_DIR/$CLEAN_REPO_NAME/"
         for USER in "${USERS[@]}"; do
             echo "  - ${TEAM_NAME}-${CLEAN_REPO_NAME}-${USER}/"
@@ -97,15 +62,7 @@ fi
 # ------------------------------------------
 # GitHub CLI auth check (real mode only)
 # ------------------------------------------
-if ! command -v gh >/dev/null 2>&1; then
-    echo "Error: GitHub CLI ('gh') not found. Install: https://cli.github.com"
-    exit 1
-fi
-
-if ! gh auth status -h github.com >/dev/null 2>&1; then
-    echo "Error: Not authenticated with GitHub CLI. Run 'gh auth login' first."
-    exit 1
-fi
+orgflow_check_gh
 
 # ------------------------------------------
 # List existing cohort repos once
@@ -123,15 +80,8 @@ fi
 # (Idempotent: already-cloned folders are skipped)
 # ------------------------------------------
 for ITEM in "${TEMPLATES[@]}"; do
-    case "$ITEM" in
-        *"|"*)
-            TEMPLATE_REPO=$(echo "$ITEM" | cut -d'|' -f1)
-            ;;
-        *)
-            TEMPLATE_REPO="$ITEM"
-            ;;
-    esac
-    CLEAN_REPO_NAME=$(echo "$TEMPLATE_REPO" | sed -E 's/(^|[-_])template([-_]|$)/\1/g; s/^[-_]//; s/[-_]$//')
+    split_template "$ITEM" || true
+    CLEAN_REPO_NAME=$(clean_repo_name "$TEMPLATE_REPO")
 
     echo "------------------------------------------"
     echo "Cloning '$TEMPLATE_REPO' assignments into $CLONE_DIR/$CLEAN_REPO_NAME/"

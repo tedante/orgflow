@@ -7,68 +7,32 @@
 # Config: edit orgflow.conf (see orgflow.conf.example)
 #   --dry-run  print the provisioning plan without calling the GitHub API
 
-DRY_RUN=0
-[ "$1" = "--dry-run" ] && DRY_RUN=1
-
-# Load config
+# Load shared helpers (config bootstrap, validation, auth, team setup)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CONFIG_FILE="${CONFIG_FILE:-$SCRIPT_DIR/orgflow.conf}"
-if [ ! -f "$CONFIG_FILE" ]; then
-    echo "Error: Config file '$CONFIG_FILE' not found."
-    echo "Copy orgflow.conf.example to orgflow.conf and edit it before running."
+LIB_FILE="$SCRIPT_DIR/lib/common.sh"
+if [ ! -f "$LIB_FILE" ]; then
+    echo "Error: '$LIB_FILE' not found. Run create-repo.sh from a full orgflow checkout."
     exit 1
 fi
-source "$CONFIG_FILE"
+source "$LIB_FILE"
 
-# Convert plain-string lists to arrays (conf format: no quotes, space/newline-separated)
-# Safe: GitHub username charset is [a-zA-Z0-9-], no glob characters possible
-USERS_ARR=($USERS)
-USERS=("${USERS_ARR[@]}")
-REVIEWERS_ARR=($REVIEWERS)
-REVIEWERS=("${REVIEWERS_ARR[@]}")
-
-# Template filter (set by TUI): semicolon-separated entries replace TEMPLATES
-if [ -n "$ORGFLOW_TEMPLATES" ]; then
-    IFS=';' read -ra TEMPLATES_OVERRIDE <<< "$ORGFLOW_TEMPLATES"
-    TEMPLATES=("${TEMPLATES_OVERRIDE[@]}")
-fi
+orgflow_bootstrap "$@"
 
 # ------------------------------------------
 # Pre-flight validation
 # ------------------------------------------
-if [ -z "$ORG" ]; then
-    echo "Error: ORG is not set in $CONFIG_FILE."
-    exit 1
-fi
-
-if [ -z "$TEAM_NAME" ]; then
-    echo "Error: TEAM_NAME is not set in $CONFIG_FILE."
-    exit 1
-fi
-
-if [ "${#USERS[@]}" -eq 0 ]; then
-    echo "Error: USERS is empty in $CONFIG_FILE."
-    exit 1
-fi
-
-if [ "${#TEMPLATES[@]}" -eq 0 ]; then
-    echo "Error: TEMPLATES is empty in $CONFIG_FILE."
-    exit 1
-fi
+orgflow_require_set "$ORG" "ORG"
+orgflow_require_set "$TEAM_NAME" "TEAM_NAME"
+orgflow_require_count "${#USERS[@]}" "USERS"
+orgflow_require_count "${#TEMPLATES[@]}" "TEMPLATES"
 
 for ITEM in "${TEMPLATES[@]}"; do
-    case "$ITEM" in
-        *"|"*)
-            TEMPLATE_REPO=$(echo "$ITEM" | cut -d'|' -f1)
-            DEADLINE=$(echo "$ITEM" | cut -d'|' -f2)
-            ;;
-        *)
-            echo "Warning: TEMPLATES entry '$ITEM' has no deadline '|' separator."
-            echo "  Milestone/issue creation will be skipped for this template."
-            echo "  Expected format: \"repository|YYYY-MM-DD HH:MM\""
-            continue
-            ;;
-    esac
+    if ! split_template "$ITEM"; then
+        echo "Warning: TEMPLATES entry '$ITEM' has no deadline '|' separator."
+        echo "  Milestone/issue creation will be skipped for this template."
+        echo "  Expected format: \"repository|YYYY-MM-DD HH:MM\""
+        continue
+    fi
     if [ -z "$DEADLINE" ]; then
         echo "Warning: TEMPLATES entry '$ITEM' has no deadline."
         echo "  Milestone/issue creation will be skipped for this template."
@@ -90,21 +54,12 @@ if [ "$DRY_RUN" -eq 1 ]; then
     echo "DRY-RUN: Provisioning plan"
     echo "=========================================="
     ALL_MEMBERS=($(echo "${USERS[@]}" "${REVIEWERS[@]}" | tr ' ' '\n' | sort -u))
-    echo "Team:      $TEAM_NAME (created as 'closed' if missing)"
+    echo "Team:      $TEAM_NAME (created as '$ORGFLOW_TEAM_PRIVACY' if missing)"
     echo "Org sync:  ${#ALL_MEMBERS[@]} unique members (students + reviewers) added to team"
     echo ""
     for ITEM in "${TEMPLATES[@]}"; do
-        case "$ITEM" in
-            *"|"*)
-                TEMPLATE_REPO=$(echo "$ITEM" | cut -d'|' -f1)
-                DEADLINE=$(echo "$ITEM" | cut -d'|' -f2)
-                ;;
-            *)
-                TEMPLATE_REPO="$ITEM"
-                DEADLINE="none"
-                ;;
-        esac
-        CLEAN_REPO_NAME=$(echo "$TEMPLATE_REPO" | sed -E 's/(^|[-_])template([-_]|$)/\1/g; s/^[-_]//; s/[-_]$//')
+        split_template "$ITEM" || true
+        CLEAN_REPO_NAME=$(clean_repo_name "$TEMPLATE_REPO")
         echo "Template: $TEMPLATE_REPO (deadline: ${DEADLINE:-none})"
         echo "  Would create ${#USERS[@]} private repos (write: student, maintain: reviewers):"
         for USER in "${USERS[@]}"; do
@@ -122,21 +77,8 @@ fi
 # ------------------------------------------
 # GitHub CLI auth check (real mode only)
 # ------------------------------------------
-if ! command -v gh >/dev/null 2>&1; then
-    echo "Error: GitHub CLI ('gh') not found. Install: https://cli.github.com"
-    exit 1
-fi
-
-if ! gh auth status -h github.com >/dev/null 2>&1; then
-    echo "Error: Not authenticated with GitHub CLI. Run 'gh auth login' first."
-    exit 1
-fi
-
-if ! gh auth status -h github.com 2>&1 | grep -q "admin:org"; then
-    echo "Error: Missing 'admin:org' scope."
-    echo "Run 'gh auth refresh -h github.com -s admin:org'."
-    exit 1
-fi
+orgflow_check_gh
+orgflow_check_admin_org
 
 # ==========================================
 
@@ -145,17 +87,7 @@ echo "Synchronizing Team Memberships: $TEAM_NAME"
 echo "=========================================="
 
 # Ensure team exists and get its ID
-TEAM_ID=$(gh api "orgs/$ORG/teams/$TEAM_NAME" -q '.id' 2>/dev/null || true)
-if ! [[ "$TEAM_ID" =~ ^[0-9]+$ ]]; then
-  echo "Team $TEAM_NAME does not exist. Creating it..."
-  TEAM_ID=$(gh api -X POST "orgs/$ORG/teams" -f name="$TEAM_NAME" -f privacy="closed" -q '.id' 2>/dev/null || true)
-  if ! [[ "$TEAM_ID" =~ ^[0-9]+$ ]]; then
-    echo "Error: Failed to create team '$TEAM_NAME'. Aborting."
-    exit 1
-  fi
-  echo "Waiting for GitHub to initialize and index the new team..."
-  sleep 5
-fi
+ensure_team
 
 # ----------------------------------------------------------------------
 # 0. Self-Healing Access Control: Check Membership and Add/Invite
@@ -192,18 +124,8 @@ echo "Reviewers: ${REVIEWERS[*]}"
 echo "=========================================="
 
 for ITEM in "${TEMPLATES[@]}"; do
-  case "$ITEM" in
-    *"|"*)
-      TEMPLATE_REPO=$(echo "$ITEM" | cut -d'|' -f1 | sed 's/,$//')
-      DEADLINE=$(echo "$ITEM" | cut -d'|' -f2 | sed 's/,$//')
-      ;;
-    *)
-      TEMPLATE_REPO=$(echo "$ITEM" | sed 's/,$//')
-      DEADLINE=""
-      ;;
-  esac
-
-  CLEAN_REPO_NAME=$(echo "$TEMPLATE_REPO" | sed -E 's/(^|[-_])template([-_]|$)/\1/g; s/^[-_]//; s/[-_]$//')
+  split_template "$ITEM" || true
+  CLEAN_REPO_NAME=$(clean_repo_name "$TEMPLATE_REPO")
 
   echo "##########################################"
   echo "TEMPLATE: $TEMPLATE_REPO"
